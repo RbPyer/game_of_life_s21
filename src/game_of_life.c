@@ -1,27 +1,50 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#define configSize 10  // максимум координат в конфигах - 5.
+#include "config1.c"
+#include "config2.c"
+#include "config3.c"
+#include "config4.c"
+#include "config5.c"
+#include "menu.c"
 
+void startGame();                    // старт игры
+void option_handler();               // обработчик меню
 void inputIntMatrix(int ***matrix);  // заполнение логической матрицы нулями
 void outputIntMatrix(int **matrix);  // отрисовка матрицы логики игры (отладка)
 void outputCharMatrix(char **matrix);                  // рендер матрицы игры
 void freeCharMatrix(char ***matrix);                   // чистка char-матрицы
 void inputCharMatrix(char ***matrix);                  // заполнение матрицы точками
-void modeHandler(char *mode, int *config);             // обработчик конфигов
+void confHandler(char *confNumber, int *config);       // обработчик конфигов
 void conf1(int *config);                               // первый конфиг
 void loadConfig(char **guiM, int **boolM, int *conf);  // подгрузка конфига
 void freeIntMatrix(int ***matrix);                     // чистка int-матрицы
 
-enum Sizes { WIDTH = 80, HEIGTH = 25 };
+int main() { option_handler(); }
 
-int main() {
-    char mode;
+void option_handler() {
+    int option;
+    menu_rander();
+    scanf("%d", &option);
+    switch (option) {
+        case 1:
+            startGame();
+            break;
+        case 2:
+        case 3:
+        default:
+            printf("Choose the correct option.\n");
+            option_handler();
+    }
+}
+
+void startGame() {
+    char confNumber;
     char **guiMatrix = malloc(sizeof(char *) * HEIGTH);
     int **boolMatrix = calloc(HEIGTH, sizeof(int *));
     int *config = malloc(sizeof(int) * configSize);
-    modeHandler(&mode, config);   // выбираем номер конфига
-    inputIntMatrix(&boolMatrix);  // заполняем логическую матрицу
+    confHandler(&confNumber, config);  // выбираем номер конфига
+    inputIntMatrix(&boolMatrix);       // заполняем логическую матрицу
     inputCharMatrix(&guiMatrix);
     loadConfig(guiMatrix, boolMatrix, config);  // подгружаем конфиг
     // outputIntMatrix(boolMatrix);
@@ -31,10 +54,10 @@ int main() {
     free(config);
 }
 
-void modeHandler(char *mode, int *config) {
+void confHandler(char *confNumber, int *config) {
     printf("Choose number of config: ");
-    scanf("%c", mode);
-    switch (*mode) {
+    scanf("%c", confNumber);
+    switch (*confNumber) {
         case '1':
             conf1(config);
             break;
@@ -43,8 +66,8 @@ void modeHandler(char *mode, int *config) {
         case '4':
         case '5':
         default:
-            printf("Error: no such number of config. Enter again.\n");
-            modeHandler(mode, config);
+            printf("Error: no such number of config. Enter again.\n\r");
+            confHandler(confNumber, config);
     }
 }
 
@@ -114,17 +137,4 @@ void outputCharMatrix(char **matrix) {
             putchar('\n');
         }
     }
-}
-
-void conf1(int *config) {
-    config[0] = 1;
-    config[1] = 2;
-    config[2] = 1;
-    config[3] = 5;
-    config[4] = 1;
-    config[5] = 3;
-    config[6] = 1;
-    config[7] = 4;
-    config[8] = 2;
-    config[9] = 5;
 }
