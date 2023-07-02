@@ -18,7 +18,7 @@
 
 // drawing
 #define CELL_FULL '#'    // char -> #
-#define CELL_EMPTY ' '  // char -> ·
+#define CELL_EMPTY '.'  // char -> ·
 
 // file
 #define FILE_PATH "configs/"
@@ -106,9 +106,7 @@ void run() {
             update_lifes(weights, lifes);
 
             ++iter;
-
             sleep(SLEEP_COUNT);
-            clearScreen();
         }
         term_off();
         draw(lifes);
@@ -118,6 +116,8 @@ void run() {
     freeMatrix(&weights);
     freeMatrix(&lifes);
 }
+
+
 
 int fileReader(int* array, const char* file_name) {
     short int flag = 0;
@@ -155,7 +155,7 @@ void loadConfig(int* array, int file_order) {
             fileReader(array, "configs/krest.txt");
             break;
         case 3:
-            fileReader(array, "configs/kvadrat.txt");
+            fileReader(array, "configs/penis.txt");
             break;
         case 4:
             fileReader(array, "configs/cock_edit.txt");
@@ -170,14 +170,15 @@ void loadConfig(int* array, int file_order) {
 }
 
 void confHandler(int** lifes) {
+    const int size = 1000;
     printf(
-        "Доступные конфиги: 1 - glaider, 2 - krest, 3 - kvadrat, 4 - cock_galactic, 5 - line, 6 - от руки\n");
+        "Доступные конфиги: 1 - glaider, 2 - krest, 3 - penis, 4 - cock_galactic, 5 - line, 6 - от руки\n");
     printf("Выберите конфиг: ");
     int response;
     scanf("%d", &response);
 
-    int* array = (int*)malloc(100 * sizeof(int));  // память под массив
-    for (int i = 0; i < 100; ++i) array[i] = -1;
+    int* array = (int*)malloc(size * sizeof(int));  // память под массив
+    for (int i = 0; i < size; ++i) array[i] = -1;
 
     if (response >= 1 && response <= 5) {
         loadConfig(array, response);
@@ -394,6 +395,7 @@ void option_handler() {
     scanf("%d", &option);
     switch (option) {
         case 1:
+        clearScreen();
             run();
             break;
         case 2:
