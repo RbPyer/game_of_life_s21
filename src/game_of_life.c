@@ -13,12 +13,11 @@
 // life's rules
 #define NEED_TO_SURVIVE 2
 #define NEED_TO_BURN 3
-#define MAX_ITERATIONS 100
-#define SLEEP_COUNT 1
+#define MAX_ITERATIONS 100000
 
 // drawing
 #define CELL_FULL '#'    // char -> #
-#define CELL_EMPTY '.'  // char -> ·
+#define CELL_EMPTY ' '  // char -> ·
 
 // file
 #define FILE_PATH "configs/"
@@ -76,7 +75,7 @@ int main() {
 void run() {
     int** weights;
     int** lifes;
-
+    int SLEEP_COUNT = 20000;
     // alloc fields
     if (allocateMatrix(&weights) && allocateMatrix(&lifes)) {
         setZeros(weights);
@@ -88,28 +87,34 @@ void run() {
         fcntl(stdin_fd, F_SETFL, O_NONBLOCK);  // Включение неблокирующего режима чтения
         // main loop
         int iter = 0;
-        while (is_there_life_here(lifes) &&
-               iter < MAX_ITERATIONS) {  // пока есть клетки или счетчик итераций больше чем число
+        while (1) {  // пока есть клетки или счетчик итераций больше чем число
             // основное тело цикла
             // norm_draw(weights);
 
             int ch = read_input();
             read(stdin_fd, &ch, sizeof(char));
+            if (ch == 'a' && SLEEP_COUNT < 10e5) {
+                SLEEP_COUNT += 20000;
+            }
+            if (ch == 'z' && SLEEP_COUNT > 0) {
+                SLEEP_COUNT -= 10000;
+            }
             if (ch == 'q') {
                 break;
             }
             draw(lifes);
-            printf("\n\n");
+            //printf("\n\n");
 
             setZeros(weights);
             update_weights(weights, lifes);
             update_lifes(weights, lifes);
 
             ++iter;
-            sleep(SLEEP_COUNT);
+            
+            usleep(SLEEP_COUNT);
+            clearScreen();
         }
         term_off();
-        draw(lifes);
     } else
         printf("n/a");
     // free fields
@@ -199,28 +204,26 @@ void draw(int** life_field) {
     for (int i = 0; i < ROWS; ++i) {
         for (int j = 0; j < COLS; ++j) {
             current_char = (life_field[i][j] == 1) ? CELL_FULL : CELL_EMPTY;
-            if (j == COLS - 1)
-                printf("%c ", current_char);
-            else
+            
                 printf("%c", current_char);
         }
         if (i != ROWS - 1) printf("\n");
     }
 }
 
-void norm_draw(int** matrix) {
-    printf("\n\ndebug\n\n");
-    for (int i = 0; i < ROWS; ++i) {
-        for (int j = 0; j < COLS; ++j) {
-            if (j == COLS - 1)
-                printf("%d ", matrix[i][j]);
-            else
-                printf("%d", matrix[i][j]);
-        }
-        if (i != ROWS - 1) printf("\n");
-    }
-    printf("\n");
-}
+// void norm_draw(int** matrix) {
+//     printf("\n\ndebug\n\n");
+//     for (int i = 0; i < ROWS; ++i) {
+//         for (int j = 0; j < COLS; ++j) {
+//             if (j == COLS - 1)
+//                 printf("%d ", matrix[i][j]);
+//             else
+//                 printf("%d", matrix[i][j]);
+//         }
+//         if (i != ROWS - 1) printf("\n");
+//     }
+//     printf("\n");
+// }
 
 void update_weights(int** weights, int** lifes) {
     for (int i = 0; i < ROWS; ++i) {
@@ -326,7 +329,7 @@ void printBorderX() { printf("|"); }
 void printEmpty() { printf(" "); }
 void printGameSymbol() { printf("•"); }
 void printDecor() { printf("*"); }
-void clearScreen() { printf("\33[0d\33[2J"); }
+void clearScreen() { printf("\033[H\33[J"); }
 short int lettersRander(const int row, const int col);
 short int decorSymbol(const int row, const int col);
 
