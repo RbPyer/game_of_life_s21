@@ -16,14 +16,14 @@
 #define MAX_ITERATIONS 100000
 
 // drawing
-#define CELL_FULL '#'    // char -> #
-#define CELL_EMPTY ' '  // char -> ·
+#define CELL_FULL '#'   // char -> #
+#define CELL_EMPTY '.'  // char -> ·
 
 // file
 #define FILE_PATH "configs/"
 
 // options for menu
-#define OPTIONS "Enter option:\n1 - Start\n2 - Exit\n"
+#define OPTIONS "Enter option:\n1 - Start\n2 - Exit\n\nCommands:\nA - speed down.\nZ - speed up.\nQ - exit.\n"
 
 struct termios term;
 //###########################################################FUNCS#############################################################################
@@ -34,22 +34,21 @@ void freeMatrix(int*** matrix);
 
 // draw
 void draw(int** life_field);
-void norm_draw(int** matrix);
 
 // logic
-void update_weights(int** weights, int** lifes);
-void update_lifes(int** weights, int** lifes);
-int is_there_life_here(int** lifes);
+void updateWeights(int** weights, int** lifes);
+void updateLifes(int** weights, int** lifes);
+int isThereLifeHere(int** lifes);
 void setZeros(int** matrix);
 
 // game
 void run();
-void term_on();
-void term_off();
-int read_input();
+void termOn();
+void termOff();
+int readInput();
 
 // file and configs
-int fileReader(int* array, const char* file_name);
+void fileReader(int* array, const char* file_name);
 void loadConfig(int* array, int file_order);
 void confHandler(int** lifes);
 
@@ -62,85 +61,64 @@ void printDecor();
 void clearScreen();
 short int lettersRander(const int row, const int col);
 short int decorSymbol(const int row, const int col);
-void menu_rander();
-void option_handler();
+void menuRander();
+void optionHandler();
 
 // ##########################################################BODY###########################################################################
 int main() {
-    option_handler();
+    optionHandler();
 
     return 0;
 }
 
 void run() {
-    int** weights;
-    int** lifes;
-    int SLEEP_COUNT = 20000;
-    // alloc fields
+    int **weights, **lifes;
     if (allocateMatrix(&weights) && allocateMatrix(&lifes)) {
+        int SLEEP_COUNT = 20000;
         setZeros(weights);
         setZeros(lifes);
-        // load config
         confHandler(lifes);
-        term_on();
+        termOn();
         int stdin_fd = fileno(stdin);
         fcntl(stdin_fd, F_SETFL, O_NONBLOCK);  // Включение неблокирующего режима чтения
-        // main loop
         int iter = 0;
-        while (1) {  // пока есть клетки или счетчик итераций больше чем число
-            // основное тело цикла
-            // norm_draw(weights);
-
-            int ch = read_input();
+        while (isThereLifeHere(lifes) &&
+               iter < MAX_ITERATIONS) {  // пока есть клетки или счетчик итераций больше чем число
+            int ch = readInput();
             read(stdin_fd, &ch, sizeof(char));
-            if (ch == 'a' && SLEEP_COUNT < 10e5) {
-                SLEEP_COUNT += 20000;
+            if ((ch == 'a' || ch == 'A') && SLEEP_COUNT < 10e5) {
+                SLEEP_COUNT += 10000;
             }
-            if (ch == 'z' && SLEEP_COUNT > 0) {
+            if ((ch == 'z' || ch == 'Z') && SLEEP_COUNT >= 15000) {
                 SLEEP_COUNT -= 10000;
             }
-            if (ch == 'q') {
+            if (ch == 'q' || ch == 'Q') {
+                puts("Game over.");
                 break;
             }
             draw(lifes);
-            //printf("\n\n");
-
             setZeros(weights);
-            update_weights(weights, lifes);
-            update_lifes(weights, lifes);
-
+            updateWeights(weights, lifes);
+            updateLifes(weights, lifes);
             ++iter;
-            
             usleep(SLEEP_COUNT);
             clearScreen();
         }
-        term_off();
-    } else
+        termOff();
+    } else {
         printf("n/a");
-    // free fields
+    }
     freeMatrix(&weights);
     freeMatrix(&lifes);
 }
 
-
-
-int fileReader(int* array, const char* file_name) {
-    short int flag = 0;
+void fileReader(int* array, const char* file_name) {
     FILE* file;
     // Открыть файл для чтения
     file = fopen(file_name, "r");
-    if (file == NULL) {
-        printf("Не удалось открыть файл.\n");
-        flag = 1;
-    }
-    // Определить размер файла
     fseek(file, 0, SEEK_END);
     rewind(file);
     // Выделить память для хранения чисел
-    if (array == NULL) {
-        printf("Ошибка выделения памяти.\n");
-        flag = 1;
-    }
     // Считать числа из файла
     int i = 0;
     while (fscanf(file, "%d", &array[i]) != EOF) {
@@ -148,7 +126,6 @@ int fileReader(int* array, const char* file_name) {
     }
     // Освободить память и закрыть файл
     fclose(file);
-    return flag;
 }
 
 void loadConfig(int* array, int file_order) {
@@ -160,10 +137,10 @@ void loadConfig(int* array, int file_order) {
             fileReader(array, "configs/krest.txt");
             break;
         case 3:
-            fileReader(array, "configs/penis.txt");
+            fileReader(array, "configs/bigPen.txt");
             break;
         case 4:
-            fileReader(array, "configs/cock_edit.txt");
+            fileReader(array, "configs/galactic.txt");
             break;
         case 5:
             fileReader(array, "configs/line.txt");
@@ -176,56 +153,43 @@ void loadConfig(int* array, int file_order) {
 
 void confHandler(int** lifes) {
     const int size = 1000;
-    printf(
-        "Доступные конфиги: 1 - glaider, 2 - krest, 3 - penis, 4 - cock_galactic, 5 - line, 6 - от руки\n");
+    printf("Доступные конфиги: 1 - glaider, 2 - krest, 3 - bigPen, 4 - galactic, 5 - line\n");
     printf("Выберите конфиг: ");
     int response;
-    scanf("%d", &response);
-
-    int* array = (int*)malloc(size * sizeof(int));  // память под массив
-    for (int i = 0; i < size; ++i) array[i] = -1;
-
-    if (response >= 1 && response <= 5) {
-        loadConfig(array, response);
+    short int flag = scanf("%d", &response);
+    if (flag == 1) {
+        int* array = (int*)malloc(size * sizeof(int));  // память под массив
+        for (int i = 0; i < size; ++i) array[i] = -1;
+        if (response >= 1 && response <= 5) {
+            loadConfig(array, response);
+            int i = 0;
+            while (array[i] != -1) {
+                lifes[array[i]][array[i + 1]] = 1;
+                i += 2;
+            }
+        } else {
+            puts("Неправильный номер конфига. Введите число от 1 до 5.");
+        }
+        free(array);
     } else {
-        // ввод от руки
+        puts("Неправильный номер конфига. Введите число от 1 до 5.");
     }
-    int i = 0;
-    while (array[i] != -1) {
-        lifes[array[i]][array[i + 1]] = 1;
-        i += 2;
-    }
-
-    free(array);
 }
 
 void draw(int** life_field) {
-    char current_char = '!';
+    char current_char;
     for (int i = 0; i < ROWS; ++i) {
         for (int j = 0; j < COLS; ++j) {
             current_char = (life_field[i][j] == 1) ? CELL_FULL : CELL_EMPTY;
-            
-                printf("%c", current_char);
+            printf("%c", current_char);
+            // if (current_char == CELL_FULL) printf("🦠");
+            // else printf("💀");
         }
         if (i != ROWS - 1) printf("\n");
     }
 }
 
-// void norm_draw(int** matrix) {
-//     printf("\n\ndebug\n\n");
-//     for (int i = 0; i < ROWS; ++i) {
-//         for (int j = 0; j < COLS; ++j) {
-//             if (j == COLS - 1)
-//                 printf("%d ", matrix[i][j]);
-//             else
-//                 printf("%d", matrix[i][j]);
-//         }
-//         if (i != ROWS - 1) printf("\n");
-//     }
-//     printf("\n");
-// }
-
-void update_weights(int** weights, int** lifes) {
+void updateWeights(int** weights, int** lifes) {
     for (int i = 0; i < ROWS; ++i) {
         for (int j = 0; j < COLS; ++j) {
             if (lifes[i][j] == 1) {                            // cell is full -> update weights neigbors
@@ -259,7 +223,7 @@ void update_weights(int** weights, int** lifes) {
     }
 }
 
-void update_lifes(int** weights, int** lifes) {
+void updateLifes(int** weights, int** lifes) {
     for (int i = 0; i < ROWS; ++i) {
         for (int j = 0; j < COLS; ++j) {
             if (lifes[i][j] == 0 && weights[i][j] >= NEED_TO_BURN)
@@ -275,29 +239,35 @@ void update_lifes(int** weights, int** lifes) {
     }
 }
 
-int is_there_life_here(int** lifes) {
+int isThereLifeHere(int** lifes) {
+    short int flag = 0;
     for (int i = 0; i < ROWS; ++i) {
         for (int j = 0; j < COLS; ++j) {
-            if (lifes[i][j]) return 1;
+            if (lifes[i][j]) {
+                flag = 1;
+                break;
+            }
         }
     }
-    return 0;
+    return flag;
 }
 
 int allocateMatrix(int*** matrix) {
+    short int flag = 1;
     *matrix = (int**)malloc(ROWS * sizeof(int*));
     if (*matrix == NULL) {
-        return 0;  // any Errors
+        flag = 0;  // any Errors
     }
 
     for (int i = 0; i < ROWS; i++) {
         (*matrix)[i] = (int*)malloc(COLS * sizeof(int));
         if ((*matrix)[i] == NULL) {
-            return 0;  // any Errors
+            flag = 0;  // any Errors
+            break;
         }
     }
 
-    return 1;
+    return flag;
 }
 
 void freeMatrix(int*** matrix) {
@@ -333,7 +303,7 @@ void clearScreen() { printf("\033[H\33[J"); }
 short int lettersRander(const int row, const int col);
 short int decorSymbol(const int row, const int col);
 
-void menu_rander() {
+void menuRander() {
     for (int i = 0; i < ROWS; i++) {
         if (i == 0 || i == ROWS - 1) {
             for (int j = 0; j < COLS; j++) {
@@ -392,13 +362,13 @@ short int decorSymbol(const int row, const int col) {
     return flag;
 }
 
-void option_handler() {
+void optionHandler() {
     int option;
-    menu_rander();
+    menuRander();
     scanf("%d", &option);
     switch (option) {
         case 1:
-        clearScreen();
+            clearScreen();
             run();
             break;
         case 2:
@@ -406,11 +376,11 @@ void option_handler() {
             exit(0);
         default:
             printf("Choose the correct option.\n");
-            option_handler();
+            optionHandler();
     }
 }
 
-int read_input() {
+int readInput() {
     int flag = -1;
     char ch;
     int stdin_fd = fileno(stdin);
@@ -421,12 +391,12 @@ int read_input() {
 
     return flag;  // Если нажатие не было обнаружено
 }
-void term_on() {
+void termOn() {
     tcgetattr(STDIN_FILENO, &term);
     term.c_lflag &= ~(ICANON | ECHO);
     tcsetattr(STDIN_FILENO, TCSANOW, &term);
 }
-void term_off() {
+void termOff() {
     tcgetattr(0, &term);
     term.c_lflag |= ICANON | ECHO;
     tcsetattr(0, TCSANOW, &term);
