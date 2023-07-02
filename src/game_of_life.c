@@ -1,216 +1,263 @@
+#include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+#include <termios.h>
 #include <unistd.h>
+//######################################################SETTINGS################################################################################
 
-#include "config1.c"
-#include "gameConfig.h"
-#include "menu.c"
+// field setting
+#define COLS 80
+#define ROWS 25
 
-void startGame();                    // старт игры
-void option_handler();               // обработчик меню
-void inputIntMatrix(int ***matrix);  // заполнение логической матрицы нулями
-void outputIntMatrix(int **matrix);  // отрисовка матрицы логики игры (отладка)
-void outputCharMatrix(char **matrix);                  // рендер матрицы игры
-void freeCharMatrix(char ***matrix);                   // чистка char-матрицы
-void inputCharMatrix(char ***matrix);                  // заполнение матрицы точками
-void confHandler(char *confNumber, int **boolMatrix);  // обработчик конфигов
-void conf1(int **lifes);                               // первый конфиг
-// void loadConfig(char **guiM, int **boolM, int *conf);  // подгрузка конфига
-void freeIntMatrix(int ***matrix);               // чистка int-матрицы
-void updateWeights(int **weights, int **lifes);  // обновление граф. матрицы
-void updateLifes(int **weights, int **lifes);    // обновление булевой матрицы
-int is_there_life_here(int **lifes);             // проверка на жизнь
-void draw(int **life_field);                     // отрисовка фигуры
-void setZeros(int **matrix);
+// life's rules
+#define NEED_TO_SURVIVE 2
+#define NEED_TO_BURN 3
+#define MAX_ITERATIONS 100
+#define SLEEP_COUNT 1
 
-int main() { option_handler(); }
+// drawing
+#define CELL_FULL '#'    // char -> #
+#define CELL_EMPTY ' '  // char -> ·
 
-void option_handler() {
-    int option;
-    menu_rander();
-    scanf("%d", &option);
-    switch (option) {
+// file
+#define FILE_PATH "configs/"
+
+// options for menu
+#define OPTIONS "Enter option:\n1 - Start\n2 - Exit\n"
+
+struct termios term;
+//###########################################################FUNCS#############################################################################
+
+// memory
+int allocateMatrix(int*** matrix);
+void freeMatrix(int*** matrix);
+
+// draw
+void draw(int** life_field);
+void norm_draw(int** matrix);
+
+// logic
+void update_weights(int** weights, int** lifes);
+void update_lifes(int** weights, int** lifes);
+int is_there_life_here(int** lifes);
+void setZeros(int** matrix);
+
+// game
+void run();
+void term_on();
+void term_off();
+int read_input();
+
+// file and configs
+int fileReader(int* array, const char* file_name);
+void loadConfig(int* array, int file_order);
+void confHandler(int** lifes);
+
+// menu
+void printBorderY();
+void printBorderX();
+void printEmpty();
+void printGameSymbol();
+void printDecor();
+void clearScreen();
+short int lettersRander(const int row, const int col);
+short int decorSymbol(const int row, const int col);
+void menu_rander();
+void option_handler();
+
+// ##########################################################BODY###########################################################################
+int main() {
+    option_handler();
+
+    return 0;
+}
+
+void run() {
+    int** weights;
+    int** lifes;
+
+    // alloc fields
+    if (allocateMatrix(&weights) && allocateMatrix(&lifes)) {
+        setZeros(weights);
+        setZeros(lifes);
+        // load config
+        confHandler(lifes);
+        term_on();
+        int stdin_fd = fileno(stdin);
+        fcntl(stdin_fd, F_SETFL, O_NONBLOCK);  // Включение неблокирующего режима чтения
+        // main loop
+        int iter = 0;
+        while (is_there_life_here(lifes) &&
+               iter < MAX_ITERATIONS) {  // пока есть клетки или счетчик итераций больше чем число
+            // основное тело цикла
+            // norm_draw(weights);
+
+            int ch = read_input();
+            read(stdin_fd, &ch, sizeof(char));
+            if (ch == 'q') {
+                break;
+            }
+            draw(lifes);
+            printf("\n\n");
+
+            setZeros(weights);
+            update_weights(weights, lifes);
+            update_lifes(weights, lifes);
+
+            ++iter;
+
+            sleep(SLEEP_COUNT);
+            clearScreen();
+        }
+        term_off();
+        draw(lifes);
+    } else
+        printf("n/a");
+    // free fields
+    freeMatrix(&weights);
+    freeMatrix(&lifes);
+}
+
+int fileReader(int* array, const char* file_name) {
+    short int flag = 0;
+    FILE* file;
+    // Открыть файл для чтения
+    file = fopen(file_name, "r");
+    if (file == NULL) {
+        printf("Не удалось открыть файл.\n");
+        flag = 1;
+    }
+    // Определить размер файла
+    fseek(file, 0, SEEK_END);
+    rewind(file);
+    // Выделить память для хранения чисел
+    if (array == NULL) {
+        printf("Ошибка выделения памяти.\n");
+        flag = 1;
+    }
+    // Считать числа из файла
+    int i = 0;
+    while (fscanf(file, "%d", &array[i]) != EOF) {
+        i++;
+    }
+    // Освободить память и закрыть файл
+    fclose(file);
+    return flag;
+}
+
+void loadConfig(int* array, int file_order) {
+    switch (file_order) {
         case 1:
-            startGame();
+            fileReader(array, "configs/glaider.txt");
             break;
         case 2:
-        case 3:
-        default:
-            printf("Choose the correct option.\n");
-            option_handler();
-    }
-}
-
-void startGame() {
-    char confNumber;    // номер конфига
-    int **guiMatrix = malloc(sizeof(int *) * HEIGTH);   // gui-матрица
-    int **boolMatrix = calloc(HEIGTH, sizeof(int *));   // bool-матрица
-    inputIntMatrix(&boolMatrix);           // заполняем логическую матрицу
-    confHandler(&confNumber, boolMatrix);  // выбираем номер конфига
-    inputIntMatrix(&guiMatrix);
-    // outputIntMatrix(boolMatrix);
-    // main loop
-    int iter = 0;
-    while (is_there_life_here(guiMatrix) &&
-           iter < MAX_ITERATIONS) {  // пока есть клетки или счетчик итераций больше чем число
-        // основное тело цикла
-        // norm_draw(weights);
-        draw(guiMatrix);
-        printf("\n\n");
-
-        setZeros(boolMatrix);
-        updateWeights(boolMatrix, guiMatrix);
-        updateLifes(boolMatrix, guiMatrix);
-
-        ++iter;
-        sleep(SLEEP_COUNT);
-    }
-
-    draw(guiMatrix);
-    // loadConfig(guiMatrix, boolMatrix, config);  // подгружаем конфиг
-    // outputIntMatrix(boolMatrix);
-    // outputCharMatrix(guiMatrix);
-    freeIntMatrix(&guiMatrix);
-    freeIntMatrix(&boolMatrix);
-}
-
-void confHandler(char *confNumber, int **boolMatrix) {
-    printf("Choose number of config: ");
-    scanf("%c", confNumber);
-    switch (*confNumber) {
-        case '1':
-            conf1(boolMatrix);
+            fileReader(array, "configs/krest.txt");
             break;
-        case '2':
-        case '3':
-        case '4':
-        case '5':
+        case 3:
+            fileReader(array, "configs/kvadrat.txt");
+            break;
+        case 4:
+            fileReader(array, "configs/cock_edit.txt");
+            break;
+        case 5:
+            fileReader(array, "configs/line.txt");
+            break;
         default:
-            printf("Error: no such number of config. Enter again.\n");
-            confHandler(confNumber, boolMatrix);
+            printf("Error: can't load config.\n");
+            break;
     }
 }
 
-void inputIntMatrix(int ***matrix) {
-    for (short int row = 0; row < HEIGTH; row++) {
-        (*matrix)[row] = calloc(WIDTH, sizeof(int));
+void confHandler(int** lifes) {
+    printf(
+        "Доступные конфиги: 1 - glaider, 2 - krest, 3 - kvadrat, 4 - cock_galactic, 5 - line, 6 - от руки\n");
+    printf("Выберите конфиг: ");
+    int response;
+    scanf("%d", &response);
+
+    int* array = (int*)malloc(100 * sizeof(int));  // память под массив
+    for (int i = 0; i < 100; ++i) array[i] = -1;
+
+    if (response >= 1 && response <= 5) {
+        loadConfig(array, response);
+    } else {
+        // ввод от руки
     }
+    int i = 0;
+    while (array[i] != -1) {
+        lifes[array[i]][array[i + 1]] = 1;
+        i += 2;
+    }
+
+    free(array);
 }
 
-void outputIntMatrix(int **matrix) {
-    for (short int row = 0; row < HEIGTH; row++) {
-        for (short int col = 0; col < WIDTH; col++) {
-            if (col != WIDTH - 1) {
-                printf("%d ", matrix[row][col]);
-            } else {
-                printf("%d ", matrix[row][col]);
-            }
+void draw(int** life_field) {
+    char current_char = '!';
+    for (int i = 0; i < ROWS; ++i) {
+        for (int j = 0; j < COLS; ++j) {
+            current_char = (life_field[i][j] == 1) ? CELL_FULL : CELL_EMPTY;
+            if (j == COLS - 1)
+                printf("%c ", current_char);
+            else
+                printf("%c", current_char);
         }
-        if (row != HEIGTH - 1) {
-            putchar('\n');
+        if (i != ROWS - 1) printf("\n");
+    }
+}
+
+void norm_draw(int** matrix) {
+    printf("\n\ndebug\n\n");
+    for (int i = 0; i < ROWS; ++i) {
+        for (int j = 0; j < COLS; ++j) {
+            if (j == COLS - 1)
+                printf("%d ", matrix[i][j]);
+            else
+                printf("%d", matrix[i][j]);
         }
+        if (i != ROWS - 1) printf("\n");
     }
+    printf("\n");
 }
 
-void inputCharMatrix(char ***matrix) {
-    *matrix = (char **)malloc(sizeof(char *) * HEIGTH);
-    for (short int row = 0; row < HEIGTH; row++) {
-        (*matrix)[row] = (char *)malloc(sizeof(char) * WIDTH);
-        for (short int col = 0; col < WIDTH; col++) {
-            (*matrix)[row][col] = ' ';
-        }
-    }
-}
-
-void freeIntMatrix(int ***matrix) {
-    for (short int row = 0; row < HEIGTH; row++) {
-        free((*matrix)[row]);
-    }
-    free(*matrix);
-}
-
-void freeCharMatrix(char ***matrix) {
-    for (short int row = 0; row < HEIGTH; row++) {
-        free((*matrix)[row]);
-    }
-    free(*matrix);
-}
-
-void loadConfig(char **guiM, int **boolM, int *conf) {
-    for (int i = 0; i < configSize; i += 2) {
-        guiM[conf[i]][conf[i + 1]] = '*';
-        boolM[conf[i]][conf[i + 1]] = 1;
-        // printf("%d %d\n", conf[i], conf[i + 1]);
-    }
-}
-
-void outputCharMatrix(char **matrix) {
-    for (short int row = 0; row < HEIGTH; row++) {
-        for (short int col = 0; col < WIDTH; col++) {
-            if (col != WIDTH - 1) {
-                printf("%c ", matrix[row][col]);
-            } else {
-                printf("%c ", matrix[row][col]);
-            }
-        }
-        if (row != HEIGTH - 1) {
-            putchar('\n');
-        }
-    }
-}
-
-void updateWeights(int **weights, int **lifes) {
-    for (int i = 0; i < HEIGTH; ++i) {
-        for (int j = 0; j < WIDTH; ++j) {
-            if (lifes[i][j] == 1) {                 // cell is full -> update weights neigbors
-                weights[(i + 1) % HEIGTH][j] += 1;  // вниз
-                // norm_draw(weights);
-                weights[i][(j + 1) % WIDTH] += 1;  // вправо
-                // norm_draw(weights);
-                weights[(i + 1) % HEIGTH][(j + 1) % WIDTH] += 1;  // вниз и вправо
-                // norm_draw(weights);
-
+void update_weights(int** weights, int** lifes) {
+    for (int i = 0; i < ROWS; ++i) {
+        for (int j = 0; j < COLS; ++j) {
+            if (lifes[i][j] == 1) {                            // cell is full -> update weights neigbors
+                weights[(i + 1) % ROWS][j] += 1;               // вниз
+                weights[i][(j + 1) % COLS] += 1;               // вправо
+                weights[(i + 1) % ROWS][(j + 1) % COLS] += 1;  // вниз и вправо
                 if (i == 0) {
-                    weights[HEIGTH - 1][(j + 1) % WIDTH] += 1;  // вверх и вправо на границе
-                    // norm_draw(weights);
-                    weights[HEIGTH - 1][j] += 1;  // вверх на границе
-                    // norm_draw(weights);
+                    weights[ROWS - 1][(j + 1) % COLS] += 1;  // вверх и вправо на границе
+                    weights[ROWS - 1][j] += 1;               // вверх на границе
                 } else {
-                    weights[i - 1][(j + 1) % WIDTH] += 1;  // вверх и вправо в поле
-                    // norm_draw(weights);
-                    weights[i - 1][j] += 1;  // вверх в поле
-                    // norm_draw(weights);
+                    weights[i - 1][(j + 1) % COLS] += 1;  // вверх и вправо в поле
+                    weights[i - 1][j] += 1;               // вверх в пол
                 }
-
                 if (i == 0 && j == 0)
-                    weights[HEIGTH - 1][WIDTH - 1] += 1;  // влево вверх если в самом углу
+                    weights[ROWS - 1][COLS - 1] += 1;  // влево вверх если в самом углу
                 else if (i == 0)
-                    weights[HEIGTH - 1][j - 1] += 1;  // влево вверх если на границе сверху
+                    weights[ROWS - 1][j - 1] += 1;  // влево вверх если на границе сверху
                 else if (j == 0)
-                    weights[i - 1][WIDTH - 1] += 1;  // влево вверх если на границе слева
+                    weights[i - 1][COLS - 1] += 1;  // влево вверх если на границе слева
                 else
                     weights[i - 1][j - 1] += 1;  // влево вверх если на поле
-                // norm_draw(weights);
-
                 if (j == 0) {
-                    weights[i][WIDTH - 1] += 1;  // влево если на границе
-                    // norm_draw(weights);
-                    weights[(i + 1) % HEIGTH][WIDTH - 1] += 1;  // влево вниз если на границе
-                    // norm_draw(weights);
+                    weights[i][COLS - 1] += 1;               // влево если на границе
+                    weights[(i + 1) % ROWS][COLS - 1] += 1;  // влево вниз если на границе
                 } else {
-                    weights[i][j - 1] += 1;  // влево если в поле
-                    // norm_draw(weights);
-                    weights[(i + 1) % HEIGTH][j - 1] += 1;  // влево вниз если на границе
-                    // norm_draw(weights);
+                    weights[i][j - 1] += 1;               // влево если в поле
+                    weights[(i + 1) % ROWS][j - 1] += 1;  // влево вниз если на границе
                 }
             }
         }
     }
 }
 
-void updateLifes(int **weights, int **lifes) {
-    for (int i = 0; i < HEIGTH; ++i) {
-        for (int j = 0; j < WIDTH; ++j) {
+void update_lifes(int** weights, int** lifes) {
+    for (int i = 0; i < ROWS; ++i) {
+        for (int j = 0; j < COLS; ++j) {
             if (lifes[i][j] == 0 && weights[i][j] >= NEED_TO_BURN)
                 lifes[i][j] = 1;  // клетка родилась, т.к. соседей больше NEED_TO_BURN
             if (lifes[i][j] == 1) {
@@ -224,34 +271,158 @@ void updateLifes(int **weights, int **lifes) {
     }
 }
 
-int is_there_life_here(int **lifes) {
-    int flag = 0;
-    for (int i = 0; i < HEIGTH; ++i) {
-        for (int j = 0; j < WIDTH; ++j) {
-            if (lifes[i][j]) flag = 1;
+int is_there_life_here(int** lifes) {
+    for (int i = 0; i < ROWS; ++i) {
+        for (int j = 0; j < COLS; ++j) {
+            if (lifes[i][j]) return 1;
         }
+    }
+    return 0;
+}
+
+int allocateMatrix(int*** matrix) {
+    *matrix = (int**)malloc(ROWS * sizeof(int*));
+    if (*matrix == NULL) {
+        return 0;  // any Errors
+    }
+
+    for (int i = 0; i < ROWS; i++) {
+        (*matrix)[i] = (int*)malloc(COLS * sizeof(int));
+        if ((*matrix)[i] == NULL) {
+            return 0;  // any Errors
+        }
+    }
+
+    return 1;
+}
+
+void freeMatrix(int*** matrix) {
+    for (int i = 0; i < ROWS; i++) {
+        if ((*matrix)[i] != NULL) {
+            free((*matrix)[i]);
+            (*matrix)[i] = NULL;
+        }
+    }
+
+    if (*matrix != NULL) {
+        free(*matrix);
+        *matrix = NULL;
+    }
+}
+
+void setZeros(int** matrix) {
+    for (int i = 0; i < ROWS; ++i) {
+        for (int j = 0; j < COLS; ++j) {
+            matrix[i][j] = 0;
+        }
+    }
+}
+
+// ##########################################################MENU###########################################################################
+
+void printBorderY() { printf("-"); }
+void printBorderX() { printf("|"); }
+void printEmpty() { printf(" "); }
+void printGameSymbol() { printf("•"); }
+void printDecor() { printf("*"); }
+void clearScreen() { printf("\33[0d\33[2J"); }
+short int lettersRander(const int row, const int col);
+short int decorSymbol(const int row, const int col);
+
+void menu_rander() {
+    for (int i = 0; i < ROWS; i++) {
+        if (i == 0 || i == ROWS - 1) {
+            for (int j = 0; j < COLS; j++) {
+                printBorderY();
+            }
+            continue;
+        }
+        for (int j = 0; j < COLS; j++) {
+            if (j == 0 || j == COLS - 1) {
+                printBorderX();
+            } else if (lettersRander(i, j) == 1) {
+                printGameSymbol();
+            } else if (decorSymbol(i, j) == 1) {
+                printBorderX();
+            } else if (decorSymbol(i, j) == 2) {
+                printDecor();
+            } else {
+                printEmpty();
+            }
+        }
+        putchar('\n');
+    }
+    putchar('\n');
+    printf("%s\n", OPTIONS);
+}
+
+short int lettersRander(const int row, const int col) {
+    short int flag = 0;
+    if (row == 5 && (col >= 15 && col <= 20)) {
+        flag = 1;
+    } else if (col == 15 && (row >= 6 && row <= 10)) {
+        flag = 1;
+    } else if (row == 10 && (col >= 15 && col <= 20)) {
+        flag = 1;
+    } else if (col == 20 && (row >= 8 && row < 10)) {
+        flag = 1;
+    } else if (row == 8 && col == 19) {
+        flag = 1;
+    } else if (row == 5 && (col >= 25 && col <= 30)) {
+        flag = 1;
+    } else if ((col == 25 || col == 30) && (row >= 6 && row <= 10)) {
+        flag = 1;
+    } else if (row == 10 && (col > 25 && col < 30)) {
+        flag = 1;
     }
     return flag;
 }
 
-void draw(int **life_field) {
-    char current_char = '!';
-    for (int i = 0; i < HEIGTH; ++i) {
-        for (int j = 0; j < WIDTH; ++j) {
-            current_char = (life_field[i][j] == 1) ? CELL_FULL : CELL_EMPTY;
-            if (j == WIDTH - 1)
-                printf("%c ", current_char);
-            else
-                printf("%c", current_char);
-        }
-        if (i != HEIGTH - 1) printf("\n");
+short int decorSymbol(const int row, const int col) {
+    short int flag = 0;
+    if (col == 35 && (row >= 5 && row < 9)) {
+        flag = 1;
+    } else if (col == 35 && row == 10) {
+        flag = 2;
+    }
+    return flag;
+}
+
+void option_handler() {
+    int option;
+    menu_rander();
+    scanf("%d", &option);
+    switch (option) {
+        case 1:
+            run();
+            break;
+        case 2:
+            printf("Good luck, have a great time :)\n");
+            exit(0);
+        default:
+            printf("Choose the correct option.\n");
+            option_handler();
     }
 }
 
-void setZeros(int **matrix) {
-    for (int i = 0; i < HEIGTH; ++i) {
-        for (int j = 0; j < WIDTH; ++j) {
-            matrix[i][j] = 0;
-        }
+int read_input() {
+    int flag = -1;
+    char ch;
+    int stdin_fd = fileno(stdin);
+
+    if (read(stdin_fd, &ch, sizeof(char)) == 1) {
+        flag = ch;
     }
+
+    return flag;  // Если нажатие не было обнаружено
+}
+void term_on() {
+    tcgetattr(STDIN_FILENO, &term);
+    term.c_lflag &= ~(ICANON | ECHO);
+    tcsetattr(STDIN_FILENO, TCSANOW, &term);
+}
+void term_off() {
+    tcgetattr(0, &term);
+    term.c_lflag |= ICANON | ECHO;
+    tcsetattr(0, TCSANOW, &term);
 }
